@@ -1,0 +1,12 @@
+spring:
+  datasource:
+    url: ${MALL_DB_URL:jdbc:postgresql://localhost:5432/mall}
+    username: ${MALL_DB_USER:mall}
+    password: ${MALL_DB_PASSWORD:mall}
+  jpa:
+    show-sql: true
+
+logging:
+  level:
+    com.example.mall: DEBUG
+    org.hibernate.SQL: DEBUG

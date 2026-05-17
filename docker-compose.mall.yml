@@ -1,0 +1,87 @@
+version: "3.9"
+
+# docker-compose.mall.yml — mall standalone stack.
+# To run alongside AskFlow, merge networks via the `external_links` field or
+# `docker compose -f docker-compose.mall.yml -f /path/to/askflow/docker-compose.yml up`.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${MALL_DB_USER:-mall}
+      POSTGRES_PASSWORD: ${MALL_DB_PASSWORD:-mall}
+      POSTGRES_DB: mall
+    ports:
+      - "5433:5432"
+    volumes:
+      - mall_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MALL_DB_USER:-mall} -d mall"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    volumes:
+      - mall_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2024-09-13T20-26-02Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MALL_MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MALL_MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - mall_minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mall:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      MALL_DB_URL: jdbc:postgresql://postgres:5432/mall
+      MALL_DB_USER: ${MALL_DB_USER:-mall}
+      MALL_DB_PASSWORD: ${MALL_DB_PASSWORD:-mall}
+      MALL_REDIS_URL: redis://redis:6379/1
+      MALL_MINIO_ENDPOINT: http://minio:9000
+      MALL_MINIO_ACCESS_KEY: ${MALL_MINIO_ACCESS_KEY:-minioadmin}
+      MALL_MINIO_SECRET_KEY: ${MALL_MINIO_SECRET_KEY:-minioadmin}
+      MALL_MINIO_BUCKET: ${MALL_MINIO_BUCKET:-mall}
+      MALL_JWT_SECRET: ${MALL_JWT_SECRET:?must equal AskFlow SECRET_KEY}
+      MALL_ASKFLOW_BASE_URL: ${MALL_ASKFLOW_BASE_URL:-http://askflow:8000}
+      MALL_ASKFLOW_SERVICE_TOKEN: ${MALL_ASKFLOW_SERVICE_TOKEN:-}
+    ports:
+      - "8080:8080"
+
+volumes:
+  mall_pg_data:
+  mall_redis_data:
+  mall_minio_data:
+
+networks:
+  default:
+    name: mall_default
